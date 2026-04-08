@@ -1,92 +1,68 @@
-package com.misinfo.misinformationdetector.service;
+package com.example.misinformationdetector.service;
 
 import org.springframework.stereotype.Service;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 
 @Service
 public class SentimentAnalysisService {
 
-    // ── Positive and Negative Word Lists ───────────
-    private static final List<String> 
-        POSITIVE_WORDS = Arrays.asList(
-            "good", "great", "excellent", "amazing",
-            "wonderful", "fantastic", "positive",
-            "success", "benefit", "improve",
-            "safe", "effective", "proven", "trust",
-            "reliable", "accurate", "helpful",
-            "support", "progress", "advance"
-        );
+    private static final Map<String, Integer> SENTIMENT_MAP = new HashMap<>();
 
-    private static final List<String> 
-        NEGATIVE_WORDS = Arrays.asList(
-            "bad", "terrible", "horrible", "awful",
-            "dangerous", "deadly", "harmful", "toxic",
-            "corrupt", "evil", "destroy", "failure",
-            "threat", "fear", "panic", "crisis",
-            "disaster", "catastrophe", "warning",
-            "urgent", "attack", "lie", "fake",
-            "fraud", "manipulation", "deceptive"
-        );
+    static {
+        // Positive words
+        SENTIMENT_MAP.put("good", 2);
+        SENTIMENT_MAP.put("great", 3);
+        SENTIMENT_MAP.put("excellent", 4);
+        SENTIMENT_MAP.put("happy", 2);
+        SENTIMENT_MAP.put("success", 3);
 
-    // ── Main Sentiment Analysis Method ─────────────
-    public String analyzeSentiment(String text) {
-        if (text == null || text.trim().isEmpty()){
-            return "NEUTRAL";
-        }
-
-        String lowerText = text.toLowerCase();
-        int positiveScore = 0;
-        int negativeScore = 0;
-
-        // Count positive word matches
-        for (String word : POSITIVE_WORDS) {
-            if (lowerText.contains(word)) {
-                positiveScore++;
-            }
-        }
-
-        // Count negative word matches
-        for (String word : NEGATIVE_WORDS) {
-            if (lowerText.contains(word)) {
-                negativeScore++;
-            }
-        }
-
-        // Determine sentiment
-        if (positiveScore > negativeScore) {
-            return "POSITIVE";
-        } else if (negativeScore > positiveScore){
-            return "NEGATIVE";
-        } else {
-            return "NEUTRAL";
-        }
+        // Negative words
+        SENTIMENT_MAP.put("bad", -2);
+        SENTIMENT_MAP.put("terrible", -4);
+        SENTIMENT_MAP.put("worst", -3);
+        SENTIMENT_MAP.put("sad", -2);
+        SENTIMENT_MAP.put("danger", -3);
+        SENTIMENT_MAP.put("fear", -3);
     }
 
-    // ── Sentiment Score (0.0 to 1.0) ───────────────
-    public double getSentimentScore(String text) {
-        if (text == null || text.trim().isEmpty()){
-            return 0.5;
-        }
+    private static final Set<String> NEGATIONS = new HashSet<>(
+            Arrays.asList("not", "no", "never")
+    );
 
-        String lowerText = text.toLowerCase();
-        int positiveScore = 0;
-        int negativeScore = 0;
+    public Map<String, Object> analyzeSentiment(String text) {
 
-        for (String word : POSITIVE_WORDS) {
-            if (lowerText.contains(word)) {
-                positiveScore++;
+        String[] words = text.toLowerCase().split("\\s+");
+
+        int score = 0;
+
+        for (int i = 0; i < words.length; i++) {
+
+            String word = words[i];
+
+            if (SENTIMENT_MAP.containsKey(word)) {
+
+                int value = SENTIMENT_MAP.get(word);
+
+                // Check for negation before word
+                if (i > 0 && NEGATIONS.contains(words[i - 1])) {
+                    value = -value;
+                }
+
+                score += value;
             }
         }
-        for (String word : NEGATIVE_WORDS) {
-            if (lowerText.contains(word)) {
-                negativeScore++;
-            }
-        }
 
-        int total = positiveScore + negativeScore;
-        if (total == 0) return 0.5;
+        String sentiment;
+        if (score > 1) sentiment = "POSITIVE";
+        else if (score < -1) sentiment = "NEGATIVE";
+        else sentiment = "NEUTRAL";
 
-        return (double) positiveScore / total;
+        double confidence = Math.abs(score) / (double) words.length;
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("sentiment", sentiment);
+        result.put("confidence", confidence);
+
+        return result;
     }
 }
