@@ -1,119 +1,146 @@
-package com.veritas.detector.service;
+package com.misinfo.misinformationdetector.service;
 
 import org.springframework.stereotype.Service;
-
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 @Service
 public class SentimentAnalysisService {
 
-    private static final Set<String> POSITIVE_WORDS = Set.of(
-        "good", "great", "excellent", "amazing", "wonderful", "fantastic", "outstanding",
-        "positive", "success", "successful", "benefit", "beneficial", "effective",
-        "proven", "confirmed", "verified", "accurate", "correct", "true", "real",
-        "genuine", "authentic", "legitimate", "credible", "reliable", "trustworthy",
-        "honest", "transparent", "fair", "balanced", "objective", "reasonable",
-        "scientific", "evidence", "research", "study", "data", "facts", "truth",
-        "improve", "improved", "improving", "progress", "growth", "increase"
-    );
+    // ── Positive Word Dictionary ────────────────────
+    private static final Set<String> POSITIVE_WORDS = 
+        new HashSet<>(Arrays.asList(
+            "good", "great", "excellent", "amazing",
+            "wonderful", "fantastic", "outstanding",
+            "positive", "success", "successful",
+            "benefit", "beneficial", "effective",
+            "proven", "confirmed", "verified",
+            "accurate", "correct", "true", "real",
+            "genuine", "authentic", "legitimate",
+            "credible", "reliable", "trustworthy",
+            "honest", "transparent", "fair",
+            "balanced", "objective", "reasonable",
+            "scientific", "evidence", "research",
+            "study", "data", "facts", "truth",
+            "improve", "improved", "progress"
+        ));
 
-    private static final Set<String> NEGATIVE_WORDS = Set.of(
-        "bad", "terrible", "awful", "horrible", "disgusting", "evil", "corrupt",
-        "dangerous", "deadly", "toxic", "harmful", "destroy", "destroying", "destroyed",
-        "fake", "false", "lie", "lying", "liar", "fraud", "fraudulent", "scam",
-        "conspiracy", "cover-up", "coverup", "manipulate", "manipulation", "propaganda",
-        "brainwash", "fear", "panic", "emergency", "crisis", "catastrophe", "disaster",
-        "death", "kill", "murder", "violence", "attack", "threat", "threatening",
-        "secret", "hidden", "exposed", "shocking", "unbelievable", "outrageous",
-        "never", "always", "everyone", "nobody", "impossible", "guaranteed"
-    );
+    // ── Negative Word Dictionary ────────────────────
+    private static final Set<String> NEGATIVE_WORDS = 
+        new HashSet<>(Arrays.asList(
+            "bad", "terrible", "awful", "horrible",
+            "disgusting", "evil", "corrupt",
+            "dangerous", "deadly", "toxic", "harmful",
+            "destroy", "fake", "false", "lie",
+            "liar", "fraud", "scam", "conspiracy",
+            "manipulate", "propaganda", "fear",
+            "panic", "emergency", "crisis",
+            "catastrophe", "disaster", "death",
+            "kill", "murder", "violence", "attack",
+            "threat", "shocking", "unbelievable",
+            "outrageous", "impossible", "guaranteed"
+        ));
 
-    private static final Set<String> INTENSITY_AMPLIFIERS = Set.of(
-        "extremely", "absolutely", "totally", "completely", "utterly", "massively",
-        "incredibly", "unbelievably", "shocking", "devastating", "explosive",
-        "critical", "urgent", "immediately", "now", "breaking", "exclusive", "bombshell"
-    );
+    // ── Intensity Amplifiers ────────────────────────
+    private static final Set<String> AMPLIFIERS = 
+        new HashSet<>(Arrays.asList(
+            "extremely", "absolutely", "totally",
+            "completely", "utterly", "massively",
+            "incredibly", "unbelievably", "critical",
+            "urgent", "immediately", "breaking"
+        ));
 
-    private static final Set<String> NEGATIONS = Set.of(
-        "not", "no", "never", "don't", "doesn't", "didn't", "won't", "can't",
-        "cannot", "neither", "nor", "nothing", "nowhere", "nobody", "none"
-    );
+    // ── Negation Words ──────────────────────────────
+    private static final Set<String> NEGATIONS = 
+        new HashSet<>(Arrays.asList(
+            "not", "no", "never", "neither",
+            "nor", "nothing", "nowhere", "none"
+        ));
 
-    public enum Sentiment {
-        POSITIVE, NEGATIVE, NEUTRAL
-    }
-
-    public record SentimentResult(Sentiment sentiment, double confidence, double intensity) {}
-
-    public SentimentResult analyze(List<String> tokens) {
-        if (tokens == null || tokens.isEmpty()) {
-            return new SentimentResult(Sentiment.NEUTRAL, 0.5, 0.0);
+    // ── Main Method called by Orchestrator ─────────
+    public String analyzeSentiment(String text) {
+        if (text == null || text.trim().isEmpty()) {
+            return "NEUTRAL";
         }
 
+        String[] words = text.toLowerCase()
+                             .split("\\s+");
         int positiveScore = 0;
         int negativeScore = 0;
-        double intensityScore = 0.0;
+        double intensityBonus = 0.0;
         boolean negationContext = false;
 
-        for (int i = 0; i < tokens.size(); i++) {
-            String word = tokens.get(i);
+        for (String word : words) {
+            // Clean punctuation from word
+            String clean = word.replaceAll(
+                "[^a-z]", "");
 
-            if (NEGATIONS.contains(word)) {
+            if (NEGATIONS.contains(clean)) {
                 negationContext = true;
                 continue;
             }
 
-            if (INTENSITY_AMPLIFIERS.contains(word)) {
-                intensityScore += 1.0;
+            if (AMPLIFIERS.contains(clean)) {
+                intensityBonus += 0.5;
             }
 
-            if (POSITIVE_WORDS.contains(word)) {
+            if (POSITIVE_WORDS.contains(clean)) {
                 if (negationContext) {
                     negativeScore += 2;
                 } else {
                     positiveScore += 1;
                 }
                 negationContext = false;
-            } else if (NEGATIVE_WORDS.contains(word)) {
+
+            } else if (NEGATIVE_WORDS.contains(clean)) {
                 if (negationContext) {
                     positiveScore += 1;
                 } else {
                     negativeScore += 2;
                 }
                 negationContext = false;
-            } else if (negationContext) {
-                negationContext = false;
-            }
-        }
 
-        int totalTokens = tokens.size();
-        double normalizedIntensity = Math.min(1.0, intensityScore / Math.max(1, totalTokens * 0.05));
-
-        Sentiment sentiment;
-        double confidence;
-        int totalSentimentWords = positiveScore + negativeScore;
-
-        if (totalSentimentWords == 0) {
-            sentiment = Sentiment.NEUTRAL;
-            confidence = 0.6;
-        } else {
-            double positiveRatio = (double) positiveScore / totalSentimentWords;
-            double negativeRatio = (double) negativeScore / totalSentimentWords;
-
-            if (positiveRatio > 0.6) {
-                sentiment = Sentiment.POSITIVE;
-                confidence = 0.5 + (positiveRatio * 0.5);
-            } else if (negativeRatio > 0.6) {
-                sentiment = Sentiment.NEGATIVE;
-                confidence = 0.5 + (negativeRatio * 0.5);
             } else {
-                sentiment = Sentiment.NEUTRAL;
-                confidence = 0.5;
+                negationContext = false;
             }
         }
 
-        confidence = Math.min(1.0, Math.max(0.0, confidence));
-        return new SentimentResult(sentiment, confidence, normalizedIntensity);
+        // Apply intensity bonus to negative score
+        negativeScore += (int) intensityBonus;
+
+        // Determine final sentiment
+        if (positiveScore == 0 && negativeScore == 0){
+            return "NEUTRAL";
+        } else if (negativeScore > positiveScore) {
+            return "NEGATIVE";
+        } else if (positiveScore > negativeScore) {
+            return "POSITIVE";
+        } else {
+            return "NEUTRAL";
+        }
+    }
+
+    // ── Confidence Score (0.0 to 1.0) ──────────────
+    public double getSentimentConfidence(
+            String text) {
+        if (text == null || text.trim().isEmpty()) {
+            return 0.5;
+        }
+
+        String[] words = text.toLowerCase()
+                             .split("\\s+");
+        int matches = 0;
+
+        for (String word : words) {
+            String clean = word.replaceAll(
+                "[^a-z]", "");
+            if (POSITIVE_WORDS.contains(clean) || 
+                NEGATIVE_WORDS.contains(clean)) {
+                matches++;
+            }
+        }
+
+        double ratio = (double) matches / 
+                       Math.max(1, words.length);
+        return Math.min(1.0, 0.5 + ratio);
     }
 }
