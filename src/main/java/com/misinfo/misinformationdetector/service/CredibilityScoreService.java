@@ -7,7 +7,7 @@ import java.util.*;
 public class CredibilityScoreService {
 
     // ── High severity propaganda techniques ────────
-    private static final List<String> HIGH_SEVERITY = 
+    private static final List<String> HIGH_SEVERITY =
         Arrays.asList(
             "conspiracy_indicators",
             "false_urgency",
@@ -15,54 +15,83 @@ public class CredibilityScoreService {
         );
 
     // ── Main Score Calculator ───────────────────────
-    // Called by AnalysisOrchestratorService
     public double calculateScore(
+            String text,
             String sentiment,
             List<String> flags,
             int wordCount) {
 
         double score = 100.0;
 
-        // Deduction 1: Propaganda flag penalties
-        for (String flag : flags) {
-            if (HIGH_SEVERITY.contains(flag)) {
-                score -= 15.0; // high severity
-            } else {
-                score -= 10.0; // standard severity
+        // Normalize text
+        String lower = text.toLowerCase();
+
+        // 🚨 Detect false death claims
+        if (lower.contains("dead") || lower.contains("died")) {
+            score -= 40.0;
+            flags.add("unverified_death_claim");
+        }
+
+        // 🚨 Detect urgency manipulation
+        if (lower.contains("breaking") || lower.contains("urgent")) {
+            score -= 10.0;
+            flags.add("false_urgency");
+        }
+
+        // 🚨 Detect war/extreme claims (IMPROVED)
+        if (lower.contains("war") || lower.contains("attack")) {
+            score -= 50.0;
+            flags.add("extreme_claim");
+        }
+
+        // 🚨 Detect political sensitive claims
+        if (lower.matches(".*(trump|modi|biden|china|india).*")) {
+            if (lower.contains("war") || lower.contains("dead") || lower.contains("attack")) {
+                score -= 30.0;
+                flags.add("sensitive_claim");
             }
         }
 
-        // Deduction 2: Negative sentiment penalty
+        // ── Deduction 1: Propaganda flags ───────────
+        for (String flag : flags) {
+            if (HIGH_SEVERITY.contains(flag)) {
+                score -= 15.0;
+            } else {
+                score -= 10.0;
+            }
+        }
+
+        // ── Deduction 2: Sentiment ──────────────────
         if ("NEGATIVE".equals(sentiment)) {
             score -= 10.0;
         } else if ("POSITIVE".equals(sentiment)) {
-            score += 2.0; // slight bonus
+            score += 2.0;
         }
 
-        // Deduction 3: Very short text penalty
+        // ── Deduction 3: Short text ─────────────────
         if (wordCount < 20) {
-            score -= 5.0;
+            score -= 10.0;
         }
 
-        // Bonus: Long clean text
+        // ── Bonus: Long clean text ──────────────────
         if (wordCount > 200 && flags.isEmpty()) {
             score = Math.min(100.0, score + 5.0);
         }
 
-        // Clamp between 0 and 100
-        return Math.max(0.0, 
+        // Clamp score
+        return Math.max(0.0,
                Math.min(100.0, score));
     }
 
-    // ── Classification ──────────────────────────────
+    // ── Classification ─────────────────────────────
     public String classify(double score) {
-        if (score >= 80.0) return "CREDIBLE";
+        if (score >= 85.0) return "CREDIBLE";
         if (score >= 60.0) return "SUSPICIOUS";
         if (score >= 40.0) return "MISLEADING";
         return "PROPAGANDA";
     }
 
-    // ── Human-readable Summary ──────────────────────
+    // ── Summary ────────────────────────────────────
     public String generateSummary(
             double score,
             String classification,
@@ -76,40 +105,29 @@ public class CredibilityScoreService {
 
         switch (classification) {
             case "CREDIBLE":
-                sb.append("This content appears " +
-                    "credible. No significant " +
-                    "manipulation detected.");
+                sb.append("This content appears credible.");
                 break;
             case "SUSPICIOUS":
-                sb.append("This content shows " +
-                    "suspicious patterns. " +
-                    "Verify independently.");
+                sb.append("This content shows suspicious patterns.");
                 break;
             case "MISLEADING":
-                sb.append("This content likely " +
-                    "contains distorted " +
-                    "information. Be cautious.");
+                sb.append("This content may be misleading.");
                 break;
             case "PROPAGANDA":
-                sb.append("Strong propaganda " +
-                    "indicators detected. " +
-                    "Do not share without " +
-                    "verification.");
+                sb.append("Strong propaganda indicators detected.");
                 break;
         }
 
         if (!flags.isEmpty()) {
-            sb.append(" Detected techniques: ")
-              .append(String.join(", ", flags))
-              .append(".");
+            sb.append(" Detected: ")
+              .append(String.join(", ", flags));
         }
 
         return sb.toString();
     }
 
-    // ── Color for UI display ────────────────────────
-    public String getClassificationColor(
-            String classification) {
+    // ── UI Color ───────────────────────────────────
+    public String getClassificationColor(String classification) {
         switch (classification) {
             case "CREDIBLE":   return "#10b981";
             case "SUSPICIOUS": return "#f59e0b";

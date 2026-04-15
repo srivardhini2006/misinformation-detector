@@ -48,7 +48,7 @@ public class AnalysisOrchestratorService {
         // ── Step 4: Calculate Score ─────────────────
         double score = scoreService
                 .calculateScore(
-                    sentiment, flags, wordCount);
+                    cleanedText, sentiment, flags, wordCount);
 
         // ── Step 5: Classify ────────────────────────
         String classification = scoreService
